@@ -1,21 +1,16 @@
 const express = require("express");
+const { verifyToken, receiveMessage } = require("./controllers/whatsappcontrollers");
+
 const app = express();
 
-const VERIFY_TOKEN = "TOHO2013419598LUANFERSA";
+app.use(express.json());
 
-app.get("/whatsapp", (req, res) => {
-  const mode = req.query["hub.mode"];
-  const token = req.query["hub.verify_token"];
-  const challenge = req.query["hub.challenge"];
+// rutas
+app.get("/whatsapp", verifyToken);
+app.post("/whatsapp", receiveMessage);
 
-  if (mode === "subscribe" && token === VERIFY_TOKEN) {
-    return res.status(200).send(challenge);
-  }
-
-  return res.sendStatus(403);
-});
-
+// puerto
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log("Servidor listo en puerto", PORT);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log("Servidor corriendo en puerto " + PORT);
 });
