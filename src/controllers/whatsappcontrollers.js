@@ -1,9 +1,7 @@
 const fs = require("fs");
 
 // guardar log en archivo local
-const myConsole = new console.Console(
-  fs.createWriteStream("./log.txt")
-);
+const myConsole = new console.Console(fs.createWriteStream("./log.txt"));
 
 const VERIFY_TOKEN = "TOHO2013419598LUANFERSA";
 
@@ -34,7 +32,6 @@ const receiveMessage = (req, res) => {
     console.log("Mensaje recibido:", messages);
 
     return res.send("EVENT_RECEIVED");
-
   } catch (error) {
     console.log("Error:", error);
     return res.send("EVENT_RECEIVED");
@@ -43,5 +40,5 @@ const receiveMessage = (req, res) => {
 
 module.exports = {
   verifyToken,
-  receiveMessage
+  receiveMessage,
 };
