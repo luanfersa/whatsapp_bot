@@ -1,11 +1,18 @@
 const express = require("express");
-const { verifyToken, receiveMessage } = require("./controllers/whatsappcontrollers");
+const {
+    verifyToken,
+    receiveMessage,
+} = require("./controllers/whatsappcontrollers");
 
 const app = express();
 
 app.use(express.json());
 
-// rutas
+app.get("/", (req, res) => {
+    res.send("🚀 WhatsApp Bot funcionando correctamente");
+});
+
+// rutas webhook
 app.get("/whatsapp", verifyToken);
 app.post("/whatsapp", receiveMessage);
 
