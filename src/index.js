@@ -1,12 +1,15 @@
 const express = require("express");
+const { verifyToken, receiveMessage } = require("./controllers/whatsappcontrollers");
+
 const app = express();
 
 app.use(express.json());
 
-const whatsappRoutes = require("./routes/routes");
+// rutas
+app.get("/whatsapp", verifyToken);
+app.post("/whatsapp", receiveMessage);
 
-app.use("/", whatsappRoutes);
-
+// puerto
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, "0.0.0.0", () => {
