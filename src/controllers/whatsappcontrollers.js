@@ -1,8 +1,5 @@
 const fs = require("fs");
 
-// guardar log en archivo local
-const myConsole = new console.Console(fs.createWriteStream("./log.txt"));
-
 const VERIFY_TOKEN = "TOHO2013419598LUANFERSA";
 
 // 🔹 Verificación webhook
@@ -18,22 +15,30 @@ const verifyToken = (req, res) => {
   return res.sendStatus(403);
 };
 
+// 🔹 Guardar log
+const logToFile = (data) => {
+  fs.appendFileSync("log.txt", data + "\n");
+};
+
 // 🔹 Recibir mensajes
 const receiveMessage = (req, res) => {
   try {
-    const entry = req.body.entry[0];
-    const changes = entry.changes[0];
-    const value = changes.value;
-    const messages = value.messages;
+    // 🔥 log completo (IMPORTANTE)
+    logToFile(JSON.stringify(req.body));
 
-    // log del mensaje recibido
-    myConsole.log(JSON.stringify(messages));
+    const value = req.body.entry?.[0]?.changes?.[0]?.value;
 
-    console.log("Mensaje recibido:", messages);
+    if (value?.messages) {
+      console.log("📩 Mensaje:", value.messages);
+
+      logToFile("MENSAJE: " + JSON.stringify(value.messages));
+    }
 
     return res.send("EVENT_RECEIVED");
+
   } catch (error) {
     console.log("Error:", error);
+    logToFile("ERROR: " + error.message);
     return res.send("EVENT_RECEIVED");
   }
 };
