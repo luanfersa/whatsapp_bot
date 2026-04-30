@@ -12,12 +12,10 @@ app.get("/", (req, res) => {
     res.send("🚀 WhatsApp Bot funcionando correctamente");
 });
 
-// rutas webhook
 app.get("/whatsapp", verifyToken);
 app.post("/whatsapp", receiveMessage);
 
-// puerto
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, "0.0.0.0", () => {
     console.log("Servidor corriendo en puerto " + PORT);

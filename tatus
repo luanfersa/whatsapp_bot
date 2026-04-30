@@ -1,0 +1,9 @@
+[33m538573f[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m mejorando webhook de WhatsApp y logs
+[33mb12bfcb[m actualizando webhook y controllers
+[33mf25306d[m actualizando index.js
+[33m90bb6db[m Merge branch 'main' of https://github.com/luanfersa/whatsapp_bot
+[33md88646c[m agrego respuesta automatica whatsapp
+[33mf241f1a[m fix webhook whatsapp
+[33m598f21d[m arreglando webhook whatsapp verify
+[33m10a21b9[m Configure server to run in Replit environment and add project documentation
+[33mc38b892[m whatsapp bot inicial
