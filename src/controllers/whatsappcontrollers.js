@@ -4,8 +4,7 @@ const myConsole = new console.Console(
   fs.createWriteStream("./log.txt")
 );
 
-const whatsappServices = require("../services/whatsappServices");
-const samples = require("../shared/sampleModels");
+const processMessage = require("../shared/procesmesage").processMessage;
 
 const VERIFY_TOKEN = "TOHO2013419598LUANFERSA";
 
@@ -23,71 +22,35 @@ const verifyToken = (req, res) => {
 
 const receiveMessage = (req, res) => {
   try {
-    const entry = req.body.entry?.[0];
-    const changes = entry?.changes?.[0];
-    const value = changes?.value;
+    const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
-    const messages = value?.messages;
+    if (!message) return res.send("EVENT_RECEIVED");
 
-    if (!messages || messages.length === 0) {
-      return res.send("EVENT_RECEIVED");
-    }
-
-    const message = messages[messages.length - 1];
-
-    const text = getTextUser(message);
     const number = message.from;
 
-    console.log("Mensaje:", text);
+    let textUser = "";
+    let optionId = null;
 
-    switch (text) {
-      case "texto":
-      case "hola": {
-        const data = samples.SampleText("Hola bot 🤖", number);
-        whatsappServices.sendMessageWhatsApp(data);
-        break;
+    if (message.type === "text") {
+      textUser = message.text?.body || "";
+    }
+
+    if (message.type === "interactive") {
+      const interactive = message.interactive;
+
+      if (interactive?.type === "list_reply") {
+        optionId = interactive.list_reply?.id || "";
       }
 
-      case "imagen": {
-        const data = samples.SampleImage(number);
-        whatsappServices.sendMessageWhatsApp(data);
-        break;
-      }
-
-      case "audio": {
-        const data = samples.SampleAudio(number);
-        whatsappServices.sendMessageWhatsApp(data);
-        break;
-      }
-
-      case "boton": {
-        const data = samples.SampleBoton(number);
-        whatsappServices.sendMessageWhatsApp(data);
-        break;
-      }
-
-      case "lista": {
-        const data = samples.SampleLista(number);
-        whatsappServices.sendMessageWhatsApp(data);
-        break;
-      }
-
-      case "location":
-      case "ubicacion": {
-        const data = samples.Samplelocation(number);
-        whatsappServices.sendMessageWhatsApp(data);
-        break;
-      }
-
-      default: {
-        const data = samples.SampleText(
-          "Comandos: texto, imagen, audio, boton, lista, location",
-          number
-        );
-        whatsappServices.sendMessageWhatsApp(data);
-        break;
+      if (interactive?.type === "button_reply") {
+        optionId = interactive.button_reply?.id || "";
       }
     }
+
+    console.log("TEXT:", textUser);
+    console.log("OPTION:", optionId);
+
+    processMessage(textUser, number, optionId);
 
     return res.send("EVENT_RECEIVED");
 
@@ -96,30 +59,6 @@ const receiveMessage = (req, res) => {
     return res.sendStatus(200);
   }
 };
-
-function getTextUser(message) {
-  if (!message) return "";
-
-  const type = message.type;
-
-  if (type === "text") {
-    return message.text?.body || "";
-  }
-
-  if (type === "interactive") {
-    const interactive = message.interactive;
-
-    if (interactive?.type === "button_reply") {
-      return interactive.button_reply?.title || "";
-    }
-
-    if (interactive?.type === "list_reply") {
-      return interactive.list_reply?.title || "";
-    }
-  }
-
-  return "";
-}
 
 module.exports = {
   verifyToken,

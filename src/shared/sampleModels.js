@@ -115,8 +115,8 @@ function SampleLocation(number) {
         to: number,
         type: "location",
         location: {
-            latitude: "-25.350331507676792",
-            longitude: "-57.5739020755661",
+            latitude: -25.350331507676792,   
+            longitude: -57.5739020755661, 
             name: "Agentech",
             address: "JCXG+VC4 Villa Elisa"
         }
