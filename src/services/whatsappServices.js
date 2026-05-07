@@ -8,7 +8,7 @@ function sendMessageWhatsApp(data) {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            "Authorization": "Bearer EAALN0A9Lo18BRbpJU9oizcOr5i7ICMeYjeRwp30o13KUEScafp3vMkzQl1KvTMcza40JUkeP8O6mBTXX4EsbI2y6IX4wXoJm0OGO64NWqJoaSfD9Sy3RMak7bE7mu3BWlMIK3O826fAVmbDBy4vTIgjeSZBrFci1tLtISNvFUPsvTrCWUqrZCZCVMzclLvkb0rQzPWbzFFlGe3w8Gm6SLPFjj6FLUhKQWs2kvFZA5RDnnArhrB9bhXHOdQW7SjxxUqZAXBw4CZAbQMVSS0rEQe7MwRxZCqVrXuJfnsZD"
+            "Authorization": "Bearer EAALN0A9Lo18BRe5YrHHT0l04wkrEoZB1ExFuyis3zbYbGZALdjmMSWyHwLQdtwmAqymZCYXNZBhOqJ66ufiUjfod3Jzxe27VkYuHTAgrKNeu7rlZC2DbAs9TIRm624m8rwUdvXP6K8yWqwoiF3uamwtauoJ9ZBArRZCVRLsCOa3VhykJE99p0ZA4w6QsgJ7tXDEcZC8dlbiUiLTcq6SShlPHhZAXaZAQVQUGehlmhGZCnRNP2WZByjBzexI3HJwd7rL6hJPUKOLVXqlgOMzqacfNq79qS1jB2nsOKPmZCCZBwZDZD"
         }
     };
 
