@@ -3,6 +3,7 @@ const whatsappServices = require('../services/whatsappServices');
 
 function processMessage(textUser, number, optionId = null) {
     textUser = textUser ? textUser.toLowerCase() : "";
+    whatsappServices.saveMessageOracle(number, textUser);  // guardar mensaje en Oracle APEX
     const models = [];
 
     if (optionId === "comprar") {

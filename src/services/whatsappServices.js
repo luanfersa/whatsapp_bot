@@ -1,5 +1,44 @@
-const https = require("https");
 
+const https = require("https");
+const axios = require("axios");
+
+// URL ORDS APEX
+const APEX_URL = "https://g7291f4e4aa4c82-agentech.adb.sa-saopaulo-1.oraclecloudapps.com/ords/agentech/chatbot/mensaje/";
+
+// ==========================================
+// GUARDAR MENSAJE EN ORACLE APEX
+// ==========================================
+async function saveMessageOracle(number, message) {
+
+    try {
+
+        const response = await axios.post(
+            APEX_URL,
+            {
+                telefono: number,
+                mensaje: message
+            },
+            {
+                headers: {
+                    "Content-Type": "application/json"
+                }
+            }
+        );
+
+        console.log("✅ Guardado Oracle:", response.data);
+
+    } catch (error) {
+
+        console.error(
+            "❌ Error Oracle:",
+            error.response?.data || error.message
+        );
+    }
+}
+
+// ==========================================
+// ENVIAR MENSAJE A WHATSAPP
+// ==========================================
 function sendMessageWhatsApp(data) {
 
     const options = {
@@ -8,11 +47,13 @@ function sendMessageWhatsApp(data) {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            "Authorization": "Bearer EAALN0A9Lo18BRe5YrHHT0l04wkrEoZB1ExFuyis3zbYbGZALdjmMSWyHwLQdtwmAqymZCYXNZBhOqJ66ufiUjfod3Jzxe27VkYuHTAgrKNeu7rlZC2DbAs9TIRm624m8rwUdvXP6K8yWqwoiF3uamwtauoJ9ZBArRZCVRLsCOa3VhykJE99p0ZA4w6QsgJ7tXDEcZC8dlbiUiLTcq6SShlPHhZAXaZAQVQUGehlmhGZCnRNP2WZByjBzexI3HJwd7rL6hJPUKOLVXqlgOMzqacfNq79qS1jB2nsOKPmZCCZBwZDZD"
+            "Authorization":
+                "Bearer EAALN0A9Lo18BRWYuCMisZCc77o0Uw7lueMuXvY30PUQKbKec2aTF7zdUHsZA1fx7Q0bZC6m8ieSXAp6ZBrVvZAZCiBZB7JuEZC67CMqz2jiNAzqaIZAJQvC3vhHZAZC5w3FQZCWlQt9S7yl9aBwXZCc5e8hfYFvEDli9KpthUAITL8k8ErZAiuab65V8pI8DL5OCuECD8wR33AJ1sFwMi3J4krayDs2S6deGvfzVE0FxPzeUZCao2vRR9BdPRXHWoByaYZBLdZBRH5O0QWPbUZCh9eyBrOtZCRxxoCRa4wYcxUmxQZDZD"
         }
     };
 
     const req = https.request(options, (res) => {
+
         let responseData = "";
 
         res.on("data", (chunk) => {
@@ -33,5 +74,6 @@ function sendMessageWhatsApp(data) {
 }
 
 module.exports = {
-    sendMessageWhatsApp
+    sendMessageWhatsApp,
+    saveMessageOracle
 };
