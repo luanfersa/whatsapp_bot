@@ -3,65 +3,72 @@ const whatsappServices = require('../services/whatsappServices');
 
 function processMessage(textUser, number, optionId = null) {
     textUser = textUser ? textUser.toLowerCase() : "";
-    whatsappServices.saveMessageOracle(number, textUser);  // guardar mensaje en Oracle APEX
+    
+    // Guardar mensaje del cliente en Oracle
+    whatsappServices.saveMessageOracle(number, textUser);
+    
     const models = [];
 
     if (optionId === "comprar") {
-        models.push(
-            whatsappModels.MessageComprar(number)
-        );
+        models.push(whatsappModels.MessageComprar(number));
+        // Guardar respuesta del bot
+        whatsappServices.saveBotResponse(number, "Opciones de compra enviadas");
     }
     else if (optionId === "btn_si") {
-        models.push(
-            whatsappModels.MessageText("✔ Compra confirmada (demo).", number)
-        );
+        const respuesta = "✔ Compra confirmada (demo).";
+        models.push(whatsappModels.MessageText(respuesta, number));
+        whatsappServices.saveBotResponse(number, respuesta);
     }
     else if (optionId === "btn_no") {
+        const respuesta1 = "❌ Cancelado.";
+        const respuesta2 = "¿En qué más podemos ayudarte?";
         models.push(
-            whatsappModels.MessageText("❌ Cancelado.", number),
+            whatsappModels.MessageText(respuesta1, number),
             whatsappModels.MessageList(number)
         );
+        whatsappServices.saveBotResponse(number, respuesta1);
+        whatsappServices.saveBotResponse(number, respuesta2);
     }
     else if (optionId === "soporte") {
-        models.push(
-            whatsappModels.MessageText("🛠️ Soporte técnico: describe tu problema y te ayudamos.", number)
-        );
+        const respuesta = "🛠️ Soporte técnico: describe tu problema y te ayudamos.";
+        models.push(whatsappModels.MessageText(respuesta, number));
+        whatsappServices.saveBotResponse(number, respuesta);
     }
     else if (optionId === "contacto") {
-        models.push(
-            whatsappModels.MessageText("📞 Un asesor se pondrá en contacto contigo.", number)
-        );
+        const respuesta = "📞 Un asesor se pondrá en contacto contigo.";
+        models.push(whatsappModels.MessageText(respuesta, number));
+        whatsappServices.saveBotResponse(number, respuesta);
     }
     else if (textUser.includes("hola")) {
+        const respuesta = "¡Hola! ¿Cómo estás?";
         models.push(
-            whatsappModels.MessageText("¡Hola! ¿Cómo estás?", number),
+            whatsappModels.MessageText(respuesta, number),
             whatsappModels.MessageList(number)
         );
+        whatsappServices.saveBotResponse(number, respuesta);
+        whatsappServices.saveBotResponse(number, "Opciones del menú enviadas");
     }
     else if (textUser.includes("menu")) {
-        models.push(
-            whatsappModels.MessageList(number)
-        );
+        models.push(whatsappModels.MessageList(number));
+        whatsappServices.saveBotResponse(number, "Menú de opciones enviado");
     }
     else if (textUser.includes("gracias")) {
-        models.push(
-            whatsappModels.MessageText("De nada! Un placer ayudarte.", number)
-        );
+        const respuesta = "De nada! Un placer ayudarte.";
+        models.push(whatsappModels.MessageText(respuesta, number));
+        whatsappServices.saveBotResponse(number, respuesta);
     }
     else if (textUser.includes("adios") || textUser.includes("chau")) {
-        models.push(
-            whatsappModels.MessageText("¡Adiós! Que tengas un buen día.", number)
-        );
+        const respuesta = "¡Adiós! Que tengas un buen día.";
+        models.push(whatsappModels.MessageText(respuesta, number));
+        whatsappServices.saveBotResponse(number, respuesta);
     }
     else {
-        models.push(
-            whatsappModels.MessageText(
-                "No entiendo tu mensaje. Escribe 'menu' para ver opciones.",
-                number
-            )
-        );
+        const respuesta = "No entiendo tu mensaje. Escribe 'menu' para ver opciones.";
+        models.push(whatsappModels.MessageText(respuesta, number));
+        whatsappServices.saveBotResponse(number, respuesta);
     }
 
+    // Enviar cada mensaje por WhatsApp
     models.forEach((messageData) => {
         whatsappServices.sendMessageWhatsApp(messageData);
     });
