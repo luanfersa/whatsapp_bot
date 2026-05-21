@@ -70,7 +70,7 @@ function sendMessageWhatsApp(data) {
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            "Authorization": "Bearer EAALN0A9Lo18BRanZAwwZAdDDira092FxvCxg6d5dbjfaOt9ZBpMaXTYwLcUliGNmpRqfY1ZBy5vNf5JgZCzCzqwqInoHkA8ZCEXvcBZAV22h0AtbCVER8UumOnVzzmGmORzocEg4yKKqoXKSlmNoqljtrxY4UC2ZAUvLJteVncVf6yQggqvv73lSEgeYXlCiJcGGTAuZC6jSlOnfUhX5CJTupb42Tn2DPdmSVs3GuMq7H8UZBWgT2qcQsF3rLZBoIJyS1FsG52vac5ZAQhOcvvcZAmBtnFLOUdKqtrRsLPAZDZD"
+            "Authorization": "Bearer EAALN0A9Lo18BRSslFZAXTsaZCd7PmUoEf5c84CeZCpqQtqXzkhZCc9uZCjiaxMxOCJfjCLDYliCVFKjcfMWAvdMtyAN0mfZCLXqJkq097AEF8bQf4trrarOBYKWAmnQptdK6pqyXN7wPMXwwsnVBkpOV7lQuQNAZBxBAGuMJGxuYP5kb8ZAiSnZCvoRi5ix0WbwZDZD"
         }
     };
 
