@@ -3,6 +3,8 @@ const axios = require("axios");
 
 // URL ORDS APEX
 const APEX_URL = "https://g7291f4e4aa4c82-agentech.adb.sa-saopaulo-1.oraclecloudapps.com/ords/agentech/chatbot/mensaje/";
+const CLIENTE_RUC_URL = process.env.CLIENTE_RUC_URL || "https://g7291f4e4aa4c82-agentech.adb.sa-saopaulo-1.oraclecloudapps.com/ords/agentech/chatbot/cliente/";
+const DEUDA_RUC_URL = process.env.DEUDA_RUC_URL || "https://g7291f4e4aa4c82-agentech.adb.sa-saopaulo-1.oraclecloudapps.com/ords/agentech/chatbot/deuda";
 
 // ==========================================
 // GUARDAR MENSAJE EN ORACLE APEX
@@ -31,6 +33,87 @@ async function saveMessageOracle(number, message, esRespuestaBot = false) {
             "❌ Error Oracle:",
             error.response?.data || error.message
         );
+    }
+}
+
+// ==========================================
+// BUSCAR CLIENTE POR RUC EN ORACLE APEX
+// ==========================================
+async function buscarClientePorRuc(ruc) {
+    try {
+        const response = await axios.get(
+            CLIENTE_RUC_URL + encodeURIComponent(ruc),
+            {
+                headers: {
+                    "Accept": "application/json"
+                },
+                timeout: 5000
+            }
+        );
+
+        const data = response.data || {};
+        const cliente = Array.isArray(data.items) ? data.items[0] : data;
+
+        if (!cliente || cliente.existe === false || cliente.encontrado === false) {
+            return null;
+        }
+
+        const nombre = cliente.nombre || cliente.desc_empresa || cliente.DESC_EMPRESA || cliente.razon_social || cliente.razonSocial;
+
+        if (!nombre) {
+            return null;
+        }
+
+        return {
+            ruc: cliente.ruc || ruc,
+            nombre: nombre
+        };
+    } catch (error) {
+        console.error(
+            "âŒ Error buscando cliente por RUC:",
+            error.response?.data || error.message
+        );
+
+        throw error;
+    }
+}
+
+// ==========================================
+// CONSULTAR DEUDA POR RUC EN ORACLE APEX
+// ==========================================
+async function consultarDeudaPorRuc(ruc) {
+    try {
+        const response = await axios.get(
+            DEUDA_RUC_URL,
+            {
+                params: {
+                    RUC: ruc
+                },
+                headers: {
+                    "Accept": "application/json"
+                },
+                timeout: 5000
+            }
+        );
+
+        const data = response.data || {};
+        const deuda = Array.isArray(data.items) ? data.items[0] : data;
+
+        return {
+            ruc: deuda.ruc || ruc,
+            cliente: deuda.cliente || null,
+            tieneDeuda: deuda.tiene_deuda === "S" || deuda.tiene_deuda === true,
+            cantidadPendientes: Number(deuda.cantidad_pendientes || 0),
+            totalDeuda: Number(deuda.total_deuda || 0),
+            moneda: deuda.moneda || "PYG"
+        };
+    } catch (error) {
+        console.error(
+            "Error consultando deuda por RUC:",
+            error.response?.data || error.message
+        );
+
+        throw error;
     }
 }
 
@@ -66,11 +149,11 @@ async function sendAndSaveMessage(number, message) {
 function sendMessageWhatsApp(data) {
     const options = {
         host: "graph.facebook.com",
-        path: "/v25.0/105196529329228/messages",
+         path: "/v25.0/1166278486566526/messages",
         method: "POST",
         headers: {
             "Content-Type": "application/json",
-            "Authorization": "Bearer EAALN0A9Lo18BRSslFZAXTsaZCd7PmUoEf5c84CeZCpqQtqXzkhZCc9uZCjiaxMxOCJfjCLDYliCVFKjcfMWAvdMtyAN0mfZCLXqJkq097AEF8bQf4trrarOBYKWAmnQptdK6pqyXN7wPMXwwsnVBkpOV7lQuQNAZBxBAGuMJGxuYP5kb8ZAiSnZCvoRi5ix0WbwZDZD"
+            "Authorization": "Bearer EAALN0A9Lo18BRmZCW3kBS5yxpIKflThzUwiOkFiIXX8UPac38Ei5oMxawVPDwjFqcIy5uqGFweJAuTvM9lgKVjB0fZBf4ZBuBL31yAKDJARAxVZAjUiMqMRHZCN8LAXWe452r8lArtl0BikwlGV6XDrbSn3TJOnZBKqxFUTOtVFRZBcYw3w9GyJBKaSpZBvN1wZDZD"
         }
     };
 
@@ -89,5 +172,7 @@ module.exports = {
     sendMessageWhatsApp,
     saveMessageOracle,
     saveBotResponse,
-    sendAndSaveMessage
+    sendAndSaveMessage,
+    buscarClientePorRuc,
+    consultarDeudaPorRuc
 };

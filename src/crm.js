@@ -4,7 +4,6 @@ const {
     receiveMessage,
 } = require("./controllers/whatsappcontrollers");
 const { sendMessageWhatsApp } = require("./controllers/sendMessage");
-const { reiniciarConversacion } = require("./shared/procesmesage");
 
 const app = express();
 
@@ -64,29 +63,7 @@ app.post("/enviar-whatsapp", (req, res) => {
     });
 });
 
-// ============================================================
-// ENDPOINT PARA QUE APEX FINALICE LA CONVERSACION DEL BOT
-// ============================================================
-app.post("/reset-conversation", (req, res) => {
-    const { telefono } = req.body;
-
-    if (!telefono) {
-        return res.status(400).json({
-            error: "Falta telefono",
-            requerido: { telefono: "string" }
-        });
-    }
-
-    reiniciarConversacion(telefono);
-    console.log(`Conversacion reiniciada para ${telefono}`);
-
-    res.json({
-        status: "reiniciada",
-        telefono: telefono
-    });
-});
-
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
 
 app.listen(PORT, "0.0.0.0", () => {
     console.log("Servidor corriendo en puerto " + PORT);

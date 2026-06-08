@@ -12,7 +12,7 @@ const VERIFY_TOKEN = "TOHO2013419598LUANFERSA";
 // ============================================================
 // CONFIGURACION DE ORACLE APEX
 // ============================================================
-const APEX_URL = 'https://c7291f4e4aa4c82-agentech.adb.sa-saopaulo-1oraclecloudapps.com/ords/agentech/chatbot/mensaje/';
+const APEX_URL = 'https://c7291f4e4aa4c82-agentech.adb.sa-saopaulo-1.oraclecloudapps.com/ords/agentech/chatbot/mensaje/';
 
 // ============================================================
 // FUNCION PARA GUARDAR EN ORACLE APEX
@@ -60,7 +60,7 @@ const verifyToken = (req, res) => {
 // ============================================================
 // RECEPCION DE MENSAJES (POST)
 // ============================================================
-const receiveMessage = (req, res) => {
+const receiveMessage = async (req, res) => {
   try {
     const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
 
@@ -103,7 +103,7 @@ const receiveMessage = (req, res) => {
     // ========================================================
     // PROCESAR MENSAJE PARA RESPUESTA DEL BOT
     // ========================================================
-    processMessage(textUser, number, optionId);
+    await processMessage(textUser, number, optionId);
 
     return res.send("EVENT_RECEIVED");
 

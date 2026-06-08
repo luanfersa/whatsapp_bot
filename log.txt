@@ -1,0 +1,45 @@
+TEXT: Todo
+OPTION: null
+❌ Error guardando en Oracle: {
+  code: 'NotFound',
+  title: 'Not Found',
+  message: 'The page you are trying to access does not exist.',
+  type: 'NA',
+  instance: 'RequestId/2cede27a3d76134e09340671553c39c8'
+}
+TEXT: Sera
+OPTION: null
+❌ Error guardando en Oracle: {
+  code: 'NotFound',
+  title: 'Not Found',
+  message: 'The page you are trying to access does not exist.',
+  type: 'NA',
+  instance: 'RequestId/9021ea92a91d7aa3290555a54bd184c8'
+}
+TEXT: Mbae la oikopava
+OPTION: null
+❌ Error guardando en Oracle: {
+  code: 'NotFound',
+  title: 'Not Found',
+  message: 'The page you are trying to access does not exist.',
+  type: 'NA',
+  instance: 'RequestId/451635b3faa0c9be2b8f65f753600609'
+}
+TEXT: Menu
+OPTION: null
+❌ Error guardando en Oracle: {
+  code: 'NotFound',
+  title: 'Not Found',
+  message: 'The page you are trying to access does not exist.',
+  type: 'NA',
+  instance: 'RequestId/8e47b7a5b3dc733c5774d22b2c636e15'
+}
+TEXT: Todo un teme
+OPTION: null
+❌ Error guardando en Oracle: {
+  code: 'NotFound',
+  title: 'Not Found',
+  message: 'The page you are trying to access does not exist.',
+  type: 'NA',
+  instance: 'RequestId/92121985d1680ab77ae76dc98397080b'
+}
