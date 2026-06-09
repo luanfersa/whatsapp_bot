@@ -1,38 +1,197 @@
 const https = require("https");
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
 const axios = require("axios");
+const { MEDIA_DIR, getMediaBaseUrl } = require("../shared/mediaConfig");
 
-// URL ORDS APEX
-const APEX_URL = "https://g7291f4e4aa4c82-agentech.adb.sa-saopaulo-1.oraclecloudapps.com/ords/agentech/chatbot/mensaje/";
+// URLs ORDS APEX
+const APEX_URL        = "https://g7291f4e4aa4c82-agentech.adb.sa-saopaulo-1.oraclecloudapps.com/ords/agentech/chatbot/mensaje/";
 const CLIENTE_RUC_URL = process.env.CLIENTE_RUC_URL || "https://g7291f4e4aa4c82-agentech.adb.sa-saopaulo-1.oraclecloudapps.com/ords/agentech/chatbot/cliente/";
-const DEUDA_RUC_URL = process.env.DEUDA_RUC_URL || "https://g7291f4e4aa4c82-agentech.adb.sa-saopaulo-1.oraclecloudapps.com/ords/agentech/chatbot/deuda";
+const DEUDA_RUC_URL   = process.env.DEUDA_RUC_URL   || "https://g7291f4e4aa4c82-agentech.adb.sa-saopaulo-1.oraclecloudapps.com/ords/agentech/chatbot/deuda";
+const ASIGNAR_URL     = "https://g7291f4e4aa4c82-agentech.adb.sa-saopaulo-1.oraclecloudapps.com/ords/agentech/chatbot/asignar/";
+const ADJUNTO_URL     = "https://g7291f4e4aa4c82-agentech.adb.sa-saopaulo-1.oraclecloudapps.com/ords/agentech/chatbot/adjunto/";
+const CONTACTO_URL    = process.env.CONTACTO_URL || "https://g7291f4e4aa4c82-agentech.adb.sa-saopaulo-1.oraclecloudapps.com/ords/agentech/chatbot/contacto";
+
+// Token Meta
+const META_TOKEN = "EAALN0A9Lo18BRmZCW3kBS5yxpIKflThzUwiOkFiIXX8UPac38Ei5oMxawVPDwjFqcIy5uqGFweJAuTvM9lgKVjB0fZBf4ZBuBL31yAKDJARAxVZAjUiMqMRHZCN8LAXWe452r8lArtl0BikwlGV6XDrbSn3TJOnZBKqxFUTOtVFRZBcYw3w9GyJBKaSpZBvN1wZDZD";
+
+// ==========================================
+// OBTENER URL PUBLICA DE MEDIA (Meta API)
+// ==========================================
+async function getMediaUrl(mediaId) {
+    try {
+        const response = await axios.get(
+            "https://graph.facebook.com/v25.0/" + mediaId,
+            {
+                headers: { "Authorization": "Bearer " + META_TOKEN },
+                timeout: 8000
+            }
+        );
+        return response.data.url || null;
+    } catch (error) {
+        console.error("Error obteniendo media URL:", error.response && error.response.data || error.message);
+        return null;
+    }
+}
+
+// ==========================================
+// DESCARGAR ARCHIVO DE META Y GUARDAR
+// EN DISCO, REGISTRANDO METADATA EN ORACLE
+// ==========================================
+async function saveMediaAsAdjunto(number, mediaId, mediaTipo, nombreArchivo) {
+    try {
+        // 1. Obtener URL temporal de Meta
+        const metaMediaUrl = await getMediaUrl(mediaId);
+        if (!metaMediaUrl) {
+            console.error("No se pudo obtener URL de media para:", mediaId);
+            return false;
+        }
+
+        // 2. Descargar el archivo binario desde Meta
+        const fileResponse = await axios.get(metaMediaUrl, {
+            headers: { "Authorization": "Bearer " + META_TOKEN },
+            responseType: "arraybuffer",
+            timeout: 30000
+        });
+
+        const fileBuffer = Buffer.from(fileResponse.data);
+
+        // 3. Determinar nombre, tipo MIME y ruta local
+        const tipoMime = fileResponse.headers["content-type"] || _getMimeType(mediaTipo);
+        const nombre   = _getNombreArchivo(number, mediaTipo, tipoMime, nombreArchivo);
+        const filePath = path.join(MEDIA_DIR, nombre);
+        const mediaUrl = getMediaBaseUrl() + "/" + encodeURIComponent(nombre);
+
+        fs.mkdirSync(MEDIA_DIR, { recursive: true });
+        fs.writeFileSync(filePath, fileBuffer);
+
+        const metadata = {
+            telefono:       number,
+            nombre_archivo: nombre,
+            tipo_mime:      tipoMime,
+            tamano:         fileBuffer.length,
+            media_url:      mediaUrl,
+            media_tipo:     mediaTipo,
+            ruta_archivo:   filePath
+        };
+
+        // 4. Registrar metadata en Oracle, sin enviar el binario/base64
+        try {
+            const uploadResponse = await axios.post(
+                ADJUNTO_URL,
+                metadata,
+                {
+                    headers: { "Content-Type": "application/json" },
+                    timeout: 10000
+                }
+            );
+
+            console.log("Metadata de adjunto registrada para " + number + ":", uploadResponse.data);
+        } catch (error) {
+            console.error("Archivo guardado, pero fallo metadata Oracle:", error.response && error.response.data || error.message);
+        }
+
+        console.log("Adjunto guardado en servidor para " + number + ":", filePath);
+        return metadata;
+
+    } catch (error) {
+        console.error("Error guardando adjunto:", error.response && error.response.data || error.message);
+        return false;
+    }
+}
+
+function _getMimeType(mediaTipo) {
+    var tipos = {
+        "image":    "image/jpeg",
+        "audio":    "audio/ogg",
+        "video":    "video/mp4",
+        "document": "application/pdf",
+        "sticker":  "image/webp"
+    };
+    return tipos[mediaTipo] || "application/octet-stream";
+}
+
+function _getNombreArchivo(number, mediaTipo, mimeType, nombreArchivo) {
+    var now = new Date();
+    var ts  = now.getFullYear() + "" + (now.getMonth()+1) + "" + now.getDate()
+            + "_" + now.getHours() + "" + now.getMinutes() + "" + now.getSeconds();
+    var ext = _getExtension(mediaTipo, mimeType, nombreArchivo);
+    var telefono = String(number || "sin_numero").replace(/[^\dA-Za-z_-]/g, "");
+    var random = crypto.randomBytes(4).toString("hex");
+
+    return telefono + "_" + mediaTipo + "_" + ts + "_" + random + "." + ext;
+}
+
+function _getExtension(mediaTipo, mimeType, nombreArchivo) {
+    if (nombreArchivo) {
+        var originalExt = path.extname(path.basename(nombreArchivo)).replace(".", "");
+        if (originalExt) return originalExt.toLowerCase();
+    }
+
+    var mime = (mimeType || "").split(";")[0].trim().toLowerCase();
+    var tipos = {
+        "image/jpeg":      "jpg",
+        "image/png":       "png",
+        "image/webp":      "webp",
+        "audio/ogg":       "ogg",
+        "audio/mpeg":      "mp3",
+        "video/mp4":       "mp4",
+        "application/pdf": "pdf"
+    };
+
+    return tipos[mime] || (mime.split("/")[1] || mediaTipo || "bin").replace(/[^a-z0-9]/g, "");
+}
+
+// ==========================================
+// GUARDAR MENSAJE MULTIMEDIA ENTRANTE
+// Guarda en mensajes (URL temporal) Y
+// como adjunto permanente en Oracle
+// ==========================================
+async function saveMediaMessage(number, mediaId, mediaTipo, nombreArchivo) {
+    try {
+        const textoDescriptivo = mediaTipo === "image"    ? "[Imagen]"
+                               : mediaTipo === "audio"    ? "[Audio]"
+                               : mediaTipo === "video"    ? "[Video]"
+                               : mediaTipo === "document" ? "[Documento]"
+                               : "[Archivo]";
+
+        // Guardar el archivo en servidor y usar su URL permanente en el mensaje.
+        const metadata = await saveMediaAsAdjunto(number, mediaId, mediaTipo, nombreArchivo);
+        const mediaUrl = metadata && metadata.media_url ? metadata.media_url : null;
+
+        await saveMessageOracle(number, textoDescriptivo, false, mediaUrl, mediaTipo);
+        console.log("Media procesada (" + mediaTipo + ") para " + number);
+    } catch (error) {
+        console.error("Error en saveMediaMessage:", error.message);
+    }
+}
 
 // ==========================================
 // GUARDAR MENSAJE EN ORACLE APEX
 // ==========================================
-async function saveMessageOracle(number, message, esRespuestaBot = false) {
+async function saveMessageOracle(number, message, esRespuestaBot, mediaUrl, mediaTipo) {
+    esRespuestaBot = esRespuestaBot || false;
+    mediaUrl       = mediaUrl       || null;
+    mediaTipo      = mediaTipo      || null;
     try {
         const response = await axios.post(
             APEX_URL,
             {
-                telefono: number,
-                mensaje: message,
-                intencion: esRespuestaBot ? "RESPUESTA_BOT" : "MENSAJE_CLIENTE"
+                telefono:   number,
+                mensaje:    message   || "",
+                intencion:  esRespuestaBot ? "RESPUESTA_BOT" : "MENSAJE_CLIENTE",
+                media_url:  mediaUrl  || "",
+                media_tipo: mediaTipo || ""
             },
             {
-                headers: {
-                    "Content-Type": "application/json"
-                },
+                headers: { "Content-Type": "application/json" },
                 timeout: 5000
             }
         );
-
-        console.log(`✅ ${esRespuestaBot ? 'Respuesta Bot' : 'Mensaje Cliente'} guardado:`, response.data);
-
+        console.log((esRespuestaBot ? "Respuesta Bot" : "Mensaje Cliente") + " guardado:", response.data);
     } catch (error) {
-        console.error(
-            "❌ Error Oracle:",
-            error.response?.data || error.message
-        );
+        console.error("Error Oracle:", error.response && error.response.data || error.message);
     }
 }
 
@@ -44,37 +203,92 @@ async function buscarClientePorRuc(ruc) {
         const response = await axios.get(
             CLIENTE_RUC_URL + encodeURIComponent(ruc),
             {
-                headers: {
-                    "Accept": "application/json"
-                },
+                headers: { "Accept": "application/json" },
                 timeout: 5000
             }
         );
 
-        const data = response.data || {};
+        const data    = response.data || {};
         const cliente = Array.isArray(data.items) ? data.items[0] : data;
 
         if (!cliente || cliente.existe === false || cliente.encontrado === false) {
             return null;
         }
 
-        const nombre = cliente.nombre || cliente.desc_empresa || cliente.DESC_EMPRESA || cliente.razon_social || cliente.razonSocial;
+        const nombre = cliente.nombre       || cliente.desc_empresa   ||
+                       cliente.DESC_EMPRESA || cliente.razon_social   ||
+                       cliente.razonSocial;
 
-        if (!nombre) {
+        if (!nombre) return null;
+
+        return { ruc: cliente.ruc || ruc, nombre: nombre };
+
+    } catch (error) {
+        console.error("Error buscando cliente por RUC:", error.response && error.response.data || error.message);
+        throw error;
+    }
+}
+
+// ==========================================
+// BUSCAR CONTACTO YA VERIFICADO POR TELEFONO
+// ==========================================
+async function buscarContactoPorTelefono(telefono) {
+    try {
+        const response = await axios.get(
+            CONTACTO_URL,
+            {
+                params: { telefono: telefono },
+                headers: { "Accept": "application/json" },
+                timeout: 5000
+            }
+        );
+
+        const data = response.data || {};
+        const contacto = Array.isArray(data.items) ? data.items[0] : data;
+
+        if (!contacto || contacto.encontrado === false || contacto.existe === false) {
             return null;
         }
 
+        const ruc = contacto.ruc || contacto.RUC;
+        const nombre = contacto.nombre_empresa || contacto.NOMBRE_EMPRESA || contacto.nombre || contacto.NOMBRE;
+
+        if (!ruc || !nombre) return null;
+
         return {
-            ruc: cliente.ruc || ruc,
+            telefono: contacto.telefono || telefono,
+            ruc: ruc,
             nombre: nombre
         };
     } catch (error) {
-        console.error(
-            "âŒ Error buscando cliente por RUC:",
-            error.response?.data || error.message
+        console.error("Error buscando contacto por telefono:", error.response && error.response.data || error.message);
+        return null;
+    }
+}
+
+// ==========================================
+// GUARDAR CONTACTO VERIFICADO
+// ==========================================
+async function guardarContactoVerificado(telefono, ruc, nombreEmpresa) {
+    try {
+        const response = await axios.post(
+            CONTACTO_URL,
+            {
+                telefono: telefono,
+                ruc: ruc,
+                nombre_empresa: nombreEmpresa
+            },
+            {
+                headers: { "Content-Type": "application/json" },
+                timeout: 5000
+            }
         );
 
-        throw error;
+        console.log("Contacto verificado guardado:", response.data);
+        return response.data || {};
+    } catch (error) {
+        console.error("Error guardando contacto verificado:", error.response && error.response.data || error.message);
+        return { success: false };
     }
 }
 
@@ -86,39 +300,31 @@ async function consultarDeudaPorRuc(ruc) {
         const response = await axios.get(
             DEUDA_RUC_URL,
             {
-                params: {
-                    RUC: ruc
-                },
-                headers: {
-                    "Accept": "application/json"
-                },
+                params:  { RUC: ruc },
+                headers: { "Accept": "application/json" },
                 timeout: 5000
             }
         );
 
-        const data = response.data || {};
+        const data  = response.data || {};
         const deuda = Array.isArray(data.items) ? data.items[0] : data;
 
         return {
-            ruc: deuda.ruc || ruc,
-            cliente: deuda.cliente || null,
-            tieneDeuda: deuda.tiene_deuda === "S" || deuda.tiene_deuda === true,
+            ruc:                deuda.ruc || ruc,
+            cliente:            deuda.cliente || null,
+            tieneDeuda:         deuda.tiene_deuda === "S" || deuda.tiene_deuda === true,
             cantidadPendientes: Number(deuda.cantidad_pendientes || 0),
-            totalDeuda: Number(deuda.total_deuda || 0),
-            moneda: deuda.moneda || "PYG"
+            totalDeuda:         Number(deuda.total_deuda || 0),
+            moneda:             deuda.moneda || "PYG"
         };
     } catch (error) {
-        console.error(
-            "Error consultando deuda por RUC:",
-            error.response?.data || error.message
-        );
-
+        console.error("Error consultando deuda:", error.response && error.response.data || error.message);
         throw error;
     }
 }
 
 // ==========================================
-// GUARDAR RESPUESTA DEL BOT (método específico)
+// GUARDAR RESPUESTA DEL BOT
 // ==========================================
 async function saveBotResponse(number, message) {
     return saveMessageOracle(number, message, true);
@@ -128,19 +334,37 @@ async function saveBotResponse(number, message) {
 // ENVIAR Y GUARDAR MENSAJE (combinado)
 // ==========================================
 async function sendAndSaveMessage(number, message) {
-    // 1. Guardar en Oracle
     await saveBotResponse(number, message);
-    
-    // 2. Enviar por WhatsApp
     const data = {
         messaging_product: "whatsapp",
-        to: number,
+        to:   number,
         type: "text",
         text: { body: message }
     };
-    
     sendMessageWhatsApp(JSON.stringify(data));
-    console.log(`📤 Bot respondió a ${number}: ${message}`);
+    console.log("Bot respondio a " + number + ": " + message);
+}
+
+// ==========================================
+// ASIGNAR TECNICO AUTOMATICAMENTE
+// ==========================================
+async function asignarTecnico(telefono, tipo) {
+    tipo = tipo || "TECNICO";
+    try {
+        const response = await axios.post(
+            ASIGNAR_URL,
+            { telefono: telefono, tipo: tipo },
+            {
+                headers: { "Content-Type": "application/json" },
+                timeout: 8000
+            }
+        );
+        console.log("Tecnico asignado para " + telefono + ":", response.data);
+        return response.data || {};
+    } catch (error) {
+        console.error("Error asignando tecnico:", error.response && error.response.data || error.message);
+        return { success: false, mensaje: "Error de asignacion" };
+    }
 }
 
 // ==========================================
@@ -148,22 +372,22 @@ async function sendAndSaveMessage(number, message) {
 // ==========================================
 function sendMessageWhatsApp(data) {
     const options = {
-        host: "graph.facebook.com",
-         path: "/v25.0/1166278486566526/messages",
+        host:   "graph.facebook.com",
+        path:   "/v25.0/1166278486566526/messages",
         method: "POST",
         headers: {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer EAALN0A9Lo18BRmZCW3kBS5yxpIKflThzUwiOkFiIXX8UPac38Ei5oMxawVPDwjFqcIy5uqGFweJAuTvM9lgKVjB0fZBf4ZBuBL31yAKDJARAxVZAjUiMqMRHZCN8LAXWe452r8lArtl0BikwlGV6XDrbSn3TJOnZBKqxFUTOtVFRZBcYw3w9GyJBKaSpZBvN1wZDZD"
+            "Content-Type":  "application/json",
+            "Authorization": "Bearer " + META_TOKEN
         }
     };
 
-    const req = https.request(options, (res) => {
-        let responseData = "";
-        res.on("data", (chunk) => { responseData += chunk; });
-        res.on("end", () => { console.log("Respuesta Meta:", responseData); });
+    const req = https.request(options, function(res) {
+        var responseData = "";
+        res.on("data", function(chunk) { responseData += chunk; });
+        res.on("end",  function()      { console.log("Respuesta Meta:", responseData); });
     });
 
-    req.on("error", (error) => { console.error("Error enviando:", error); });
+    req.on("error", function(error) { console.error("Error enviando:", error); });
     req.write(data);
     req.end();
 }
@@ -173,6 +397,12 @@ module.exports = {
     saveMessageOracle,
     saveBotResponse,
     sendAndSaveMessage,
+    saveMediaMessage,
+    saveMediaAsAdjunto,
+    getMediaUrl,
     buscarClientePorRuc,
-    consultarDeudaPorRuc
+    buscarContactoPorTelefono,
+    guardarContactoVerificado,
+    consultarDeudaPorRuc,
+    asignarTecnico
 };

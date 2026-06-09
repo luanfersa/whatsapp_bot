@@ -1,12 +1,16 @@
 const express = require("express");
+const fs = require("fs");
 const {
     verifyToken,
     receiveMessage,
 } = require("./controllers/whatsappcontrollers");
 const { sendMessageWhatsApp } = require("./controllers/sendMessage");
 const { reiniciarConversacion } = require("./shared/procesmesage");
+const { MEDIA_DIR } = require("./shared/mediaConfig");
 
 const app = express();
+
+fs.mkdirSync(MEDIA_DIR, { recursive: true });
 
 // ============================================
 // HABILITAR CORS para permitir peticiones desde APEX
@@ -24,6 +28,7 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json());
+app.use("/media", express.static(MEDIA_DIR));
 
 // Ruta raíz para verificar que el bot está vivo
 app.get("/", (req, res) => {
@@ -87,6 +92,7 @@ app.post("/reset-conversation", (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
+process.env.PORT = String(PORT);
 
 app.listen(PORT, "0.0.0.0", () => {
     console.log("Servidor corriendo en puerto " + PORT);
