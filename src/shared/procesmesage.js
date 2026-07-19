@@ -187,7 +187,7 @@ async function processMessage(textUser, number, optionId, messageObj) {
     }
 
     var waMessageIdTexto = messageObj && messageObj.id ? messageObj.id : null;
-    whatsappServices.saveMessageOracle(number, textoOriginal, false, null, null, waMessageIdTexto);
+    await whatsappServices.saveMessageOracle(number, textoOriginal, false, null, null, waMessageIdTexto);
 
     if (texto === "reiniciar" || texto === "menu") {
         reiniciarConversacion(number);
