@@ -201,6 +201,12 @@ async function processMessage(textUser, number, optionId, messageObj) {
         return;
     }
 
+    const estadosTextoDirectoAHumano = ["INICIO", "BIENVENIDA", "CLIENTE_IDENTIFICADO"];
+    if (!optionId && texto && estadosTextoDirectoAHumano.includes(sesion.estado)) {
+        await derivarAHumano(number, sesion, mensajes, "mensaje directo del cliente");
+        return;
+    }
+
     if (!optionId && sesion.estado === "CLIENTE_IDENTIFICADO") {
         if (texto.includes("administracion") || texto.includes("admin")) {
             optionId = "hablar_administracion";
@@ -378,12 +384,7 @@ async function processMessage(textUser, number, optionId, messageObj) {
         return;
     }
 
-    if (texto.includes("hola") || texto.includes("buenas") || texto || sesion.estado === "INICIO") {
-        sesion.estado = "BIENVENIDA";
-        mensajes.push(whatsappModels.MessageWelcome(number));
-        await enviar(number, mensajes);
-        return;
-    }
+    console.log("Mensaje sin respuesta automatica:", number, "estado:", sesion.estado);
 }
 
 module.exports = { processMessage, reiniciarConversacion };
