@@ -149,7 +149,7 @@ function _getExtension(mediaTipo, mimeType, nombreArchivo) {
 // Guarda en mensajes (URL temporal) Y
 // como adjunto permanente en Oracle
 // ==========================================
-async function saveMediaMessage(number, mediaId, mediaTipo, nombreArchivo) {
+async function saveMediaMessage(number, mediaId, mediaTipo, nombreArchivo, waMessageId) {
     try {
         const textoDescriptivo = mediaTipo === "image"    ? "[Imagen]"
                                : mediaTipo === "audio"    ? "[Audio]"
@@ -161,7 +161,7 @@ async function saveMediaMessage(number, mediaId, mediaTipo, nombreArchivo) {
         const metadata = await saveMediaAsAdjunto(number, mediaId, mediaTipo, nombreArchivo);
         const mediaUrl = metadata && metadata.media_url ? metadata.media_url : null;
 
-        await saveMessageOracle(number, textoDescriptivo, false, mediaUrl, mediaTipo);
+        await saveMessageOracle(number, textoDescriptivo, false, mediaUrl, mediaTipo, waMessageId);
         console.log("Media procesada (" + mediaTipo + ") para " + number);
     } catch (error) {
         console.error("Error en saveMediaMessage:", error.message);
@@ -170,20 +170,25 @@ async function saveMediaMessage(number, mediaId, mediaTipo, nombreArchivo) {
 
 // ==========================================
 // GUARDAR MENSAJE EN ORACLE APEX
+// waMessageId: wamid de Meta (mensaje entrante o respuesta del bot),
+// se guarda en t_whatsapp_mensajes.wa_message_id para poder citarlo
+// despues desde el CRM (reply real de WhatsApp).
 // ==========================================
-async function saveMessageOracle(number, message, esRespuestaBot, mediaUrl, mediaTipo) {
+async function saveMessageOracle(number, message, esRespuestaBot, mediaUrl, mediaTipo, waMessageId) {
     esRespuestaBot = esRespuestaBot || false;
     mediaUrl       = mediaUrl       || null;
     mediaTipo      = mediaTipo      || null;
+    waMessageId    = waMessageId    || null;
     try {
         const response = await axios.post(
             APEX_URL,
             {
-                telefono:   number,
-                mensaje:    message   || "",
-                intencion:  esRespuestaBot ? "RESPUESTA_BOT" : "MENSAJE_CLIENTE",
-                media_url:  mediaUrl  || "",
-                media_tipo: mediaTipo || ""
+                telefono:       number,
+                mensaje:        message   || "",
+                intencion:      esRespuestaBot ? "RESPUESTA_BOT" : "MENSAJE_CLIENTE",
+                media_url:      mediaUrl  || "",
+                media_tipo:     mediaTipo || "",
+                wa_message_id:  waMessageId || ""
             },
             {
                 headers: { "Content-Type": "application/json" },
@@ -478,6 +483,9 @@ async function asignarTecnico(telefono, tipo) {
 
 // ==========================================
 // ENVIAR MENSAJE A WHATSAPP
+// data: string JSON del payload a mandar a Meta.
+// Devuelve el string de respuesta cruda de Meta (como antes), para
+// no romper a quien ya consume esta funcion esperando ese formato.
 // ==========================================
 function sendMessageWhatsApp(data) {
     return new Promise(function(resolve) {
@@ -509,6 +517,23 @@ function sendMessageWhatsApp(data) {
     });
 }
 
+// ==========================================
+// helper: extrae el wamid ("messages"[0].id) de la respuesta
+// cruda de Meta (string JSON) devuelta por sendMessageWhatsApp.
+// Devuelve null si no se pudo parsear o no vino wamid.
+// ==========================================
+function extraerWamidDeRespuestaMeta(respuestaCruda) {
+    try {
+        var parsed = JSON.parse(respuestaCruda);
+        if (parsed && Array.isArray(parsed.messages) && parsed.messages[0] && parsed.messages[0].id) {
+            return parsed.messages[0].id;
+        }
+    } catch (e) {
+        // respuesta no parseable, no hay wamid
+    }
+    return null;
+}
+
 module.exports = {
     sendMessageWhatsApp,
     saveMessageOracle,
@@ -525,5 +550,6 @@ module.exports = {
     buscarContactoPorTelefono,
     guardarContactoVerificado,
     consultarDeudaPorRuc,
-    asignarTecnico
+    asignarTecnico,
+    extraerWamidDeRespuestaMeta
 };

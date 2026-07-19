@@ -1,6 +1,12 @@
 const whatsappModels   = require("../shared/whatsappmodels");
 const whatsappServices = require("../services/whatsappServices");
+
 const conversaciones = {};
+
+// Cuantas veces se le permite al cliente escribir "cualquier cosa" en un
+// paso del formulario (RUC / nombre) antes de cortar y derivar a un agente.
+const MAX_INTENTOS = 2;
+
 const SOPORTE_TITULOS = {
     soporte_sifen:    "Facturacion Electronica / SIFEN",
     soporte_acceso:   "Acceso y Usuarios",
@@ -8,24 +14,30 @@ const SOPORTE_TITULOS = {
     soporte_reportes: "Reportes",
     soporte_otro:     "Otro modulo"
 };
+
 function getConversacion(number) {
     if (!conversaciones[number]) {
         conversaciones[number] = {
-            estado:  "INICIO",
-            ruc:     null,
+            estado: "INICIO",
+            ruc: null,
             cliente: null,
             contactoPendiente: null,
-            humano:  false
+            humano: false,
+            intentos: { ruc: 0, nombre: 0 },
+            ultimoTextoInvalido: null
         };
     }
     return conversaciones[number];
 }
+
 function reiniciarConversacion(number) {
     if (conversaciones[number]) delete conversaciones[number];
 }
+
 function limpiarTexto(textUser) {
     return textUser ? textUser.trim().toLowerCase() : "";
 }
+
 function obtenerTextoMensajeBot(messageData) {
     try {
         const mensaje = typeof messageData === "string" ? JSON.parse(messageData) : messageData;
@@ -45,6 +57,7 @@ function obtenerTextoMensajeBot(messageData) {
     }
     return null;
 }
+
 async function enviar(number, mensajes) {
     for (const messageData of mensajes) {
         await whatsappServices.sendMessageWhatsApp(messageData);
@@ -52,16 +65,12 @@ async function enviar(number, mensajes) {
         if (textoBot) await whatsappServices.saveBotResponse(number, textoBot);
     }
 }
-function formatearGuaranies(monto) {
-    return new Intl.NumberFormat("es-PY", {
-        style: "currency", currency: "PYG",
-        minimumFractionDigits: 0, maximumFractionDigits: 0
-    }).format(monto || 0);
-}
+
 function finalizarParaAtencionHumana(sesion) {
     sesion.estado = "HUMANO";
     sesion.humano = true;
 }
+
 function cargarClienteEnSesion(sesion, contacto) {
     sesion.ruc = contacto.ruc;
     sesion.cliente = {
@@ -75,6 +84,52 @@ function cargarClienteEnSesion(sesion, contacto) {
     sesion.estado = "CLIENTE_IDENTIFICADO";
     sesion.humano = false;
 }
+
+async function derivarAHumano(number, sesion, mensajes, motivo) {
+    finalizarParaAtencionHumana(sesion);
+    mensajes.push(whatsappModels.MessageText(
+        "Te derivamos con un asesor de AGENTECH para ayudarte mejor. En breve te va a contactar.",
+        number
+    ));
+    await enviar(number, mensajes);
+    setTimeout(async function () {
+        try {
+            console.log("Asignando agente para " + number + " - motivo: " + motivo);
+            const resultado = await whatsappServices.asignarTecnico(number, "TECNICO");
+            if (resultado && resultado.success) {
+                console.log("Agente asignado: " + resultado.asignado + " para " + number);
+            } else {
+                console.warn("Sin agente disponible:", resultado && resultado.mensaje);
+            }
+        } catch (err) {
+            console.error("Error en asignacion:", err.message);
+        }
+    }, 3000);
+}
+
+// ==========================================
+// ANTI-BOBOS: registra un intento fallido en un paso del formulario.
+// Devuelve true si hay que CORTAR el formulario y derivar a un agente.
+// ==========================================
+function registrarIntentoFallido(sesion, campo, textoOriginal) {
+    const textoNormalizado = limpiarTexto(textoOriginal);
+
+    // Si el cliente repite exactamente lo mismo que ya fue rechazado,
+    // no tiene sentido volver a pedirselo: se corta directo.
+    if (sesion.ultimoTextoInvalido !== null && textoNormalizado === sesion.ultimoTextoInvalido) {
+        return true;
+    }
+    sesion.ultimoTextoInvalido = textoNormalizado;
+
+    sesion.intentos[campo] = (sesion.intentos[campo] || 0) + 1;
+    return sesion.intentos[campo] >= MAX_INTENTOS;
+}
+
+function limpiarIntentos(sesion) {
+    sesion.intentos = { ruc: 0, nombre: 0 };
+    sesion.ultimoTextoInvalido = null;
+}
+
 // ==========================================
 // MANEJO DE MENSAJES MULTIMEDIA
 // ==========================================
@@ -82,8 +137,9 @@ async function handleMediaMessage(number, messageObj) {
     const tipo = messageObj.type;
     const mediaTypes = ["image", "audio", "video", "document", "sticker"];
     if (!mediaTypes.includes(tipo)) return false;
-    var mediaId        = null;
-    var nombreArchivo  = null;
+
+    var mediaId       = null;
+    var nombreArchivo = null;
     if (tipo === "image"    && messageObj.image)    { mediaId = messageObj.image.id; }
     if (tipo === "audio"    && messageObj.audio)    { mediaId = messageObj.audio.id; }
     if (tipo === "video"    && messageObj.video)    { mediaId = messageObj.video.id; }
@@ -92,17 +148,22 @@ async function handleMediaMessage(number, messageObj) {
         nombreArchivo = messageObj.document.filename || null;
     }
     if (tipo === "sticker"  && messageObj.sticker)  { mediaId = messageObj.sticker.id; }
+
     if (!mediaId) {
         console.warn("Media sin ID para tipo:", tipo);
         return true;
     }
+
     console.log("Multimedia entrante (" + tipo + ") de " + number + ", media_id: " + mediaId);
-    await whatsappServices.saveMediaMessage(number, mediaId, tipo, nombreArchivo);
+    var waMessageId = messageObj.id || null;
+    await whatsappServices.saveMediaMessage(number, mediaId, tipo, nombreArchivo, waMessageId);
+
     const sesion = getConversacion(number);
     if (sesion.humano || sesion.estado === "HUMANO") {
         console.log("Conversacion en modo humano, multimedia guardada sin respuesta bot.");
         return true;
     }
+
     const mensajes = [];
     mensajes.push(whatsappModels.MessageText(
         "Recibimos tu archivo. Un agente lo revisara a la brevedad.",
@@ -111,6 +172,7 @@ async function handleMediaMessage(number, messageObj) {
     await enviar(number, mensajes);
     return true;
 }
+
 async function processMessage(textUser, number, optionId, messageObj) {
     optionId   = optionId   || null;
     messageObj = messageObj || null;
@@ -118,21 +180,27 @@ async function processMessage(textUser, number, optionId, messageObj) {
     const textoOriginal = textUser || "";
     const texto         = limpiarTexto(textUser);
     const mensajes      = [];
+
     if (messageObj) {
         const esMedia = await handleMediaMessage(number, messageObj);
         if (esMedia) return;
     }
-    whatsappServices.saveMessageOracle(number, textoOriginal, false);
+
+    var waMessageIdTexto = messageObj && messageObj.id ? messageObj.id : null;
+    whatsappServices.saveMessageOracle(number, textoOriginal, false, null, null, waMessageIdTexto);
+
     if (texto === "reiniciar" || texto === "menu") {
-        conversaciones[number] = { estado: "INICIO", ruc: null, cliente: null, contactoPendiente: null, humano: false };
+        reiniciarConversacion(number);
         mensajes.push(whatsappModels.MessageWelcome(number));
         await enviar(number, mensajes);
         return;
     }
+
     if (sesion.humano || sesion.estado === "HUMANO") {
         console.log("Conversacion en modo humano. Bot no responde:", number);
         return;
     }
+
     if (!optionId && sesion.estado === "CLIENTE_IDENTIFICADO") {
         if (texto.includes("administracion") || texto.includes("admin")) {
             optionId = "hablar_administracion";
@@ -140,6 +208,7 @@ async function processMessage(textUser, number, optionId, messageObj) {
             optionId = "soporte_tecnico";
         }
     }
+
     if (!optionId && sesion.estado === "INICIO") {
         const contacto = await whatsappServices.buscarContactoPorTelefono(number);
         if (contacto) {
@@ -166,126 +235,78 @@ async function processMessage(textUser, number, optionId, messageObj) {
             return;
         }
     }
+
     if (optionId === "soy_cliente") {
         sesion.estado = "ESPERANDO_RUC";
+        limpiarIntentos(sesion);
         mensajes.push(whatsappModels.MessageText(
             "Perfecto. Para identificar tu empresa, por favor escribi el RUC. Si no lo tenes a mano, tambien podes escribir tu CI.", number
         ));
         await enviar(number, mensajes);
         return;
     }
+
     if (optionId === "quiero_cliente") {
-        finalizarParaAtencionHumana(sesion);
-        mensajes.push(whatsappModels.MessageText(
-            "Gracias por tu interes en AGENTECH Software ERP.\n\nNuestro horario de atencion es de lunes a viernes, de 8:00 a 18:00 hs.\n\nPodes dejar tu mensaje por este medio y un asesor comercial se comunicara contigo a la brevedad.",
-            number
-        ));
-        await enviar(number, mensajes);
+        await derivarAHumano(number, sesion, mensajes, "quiere ser cliente");
         return;
     }
+
     if (optionId === "soporte_tecnico") {
-        finalizarParaAtencionHumana(sesion);
-        mensajes.push(whatsappModels.MessageText(
-            "Gracias por comunicarte con Soporte Tecnico de AGENTECH.\n\nPor favor, describinos brevemente cual es el inconveniente, que accion estabas realizando y si aparece algun mensaje de error.\n\nTu conversacion ya fue derivada al area tecnica. Un tecnico se comunicara contigo a la brevedad.",
-            number
-        ));
-        await enviar(number, mensajes);
-
-        setTimeout(async function() {
-            try {
-                console.log("Asignando tecnico para " + number + " - soporte directo");
-                const resultado = await whatsappServices.asignarTecnico(number, "TECNICO");
-                if (resultado && resultado.success) {
-                    console.log("Tecnico asignado: " + resultado.asignado + " para " + number);
-                } else {
-                    console.warn("Sin tecnico disponible:", resultado && resultado.mensaje);
-                }
-            } catch (err) {
-                console.error("Error en asignacion:", err.message);
-            }
-        }, 3000);
-
+        await derivarAHumano(number, sesion, mensajes, "soporte tecnico directo");
         return;
     }
+
     if (optionId === "ver_deuda") {
         optionId = "hablar_administracion";
     }
+
     if (optionId === "hablar_administracion") {
-        finalizarParaAtencionHumana(sesion);
-        mensajes.push(whatsappModels.MessageText(
-            "Gracias por comunicarte con AGENTECH.\n\nDerivamos tu conversacion al area de Administracion. Un asesor administrativo revisara tu solicitud y se pondra en contacto contigo a la brevedad.\n\nPor favor, indicanos brevemente el motivo de tu consulta para poder atenderte de manera mas eficiente.",
-            number
-        ));
-        await enviar(number, mensajes);
-        setTimeout(async function() {
-            try {
-                console.log("Asignando administracion para " + number);
-                const resultado = await whatsappServices.asignarTecnico(number, "ADMIN"); // ? CAMBIO
-                if (resultado && resultado.success) {
-                    console.log("Administracion asignada: " + resultado.asignado + " para " + number);
-                } else {
-                    console.warn("Sin asesor administrativo disponible:", resultado && resultado.mensaje);
-                }
-            } catch (err) {
-                console.error("Error en asignacion administrativa:", err.message);
-            }
-        }, 3000);
+        await derivarAHumano(number, sesion, mensajes, "administracion");
         return;
     }
+
     if (optionId === "hablar_asesor") {
-        finalizarParaAtencionHumana(sesion);
-        mensajes.push(whatsappModels.MessageText(
-            "Listo. Un asesor de AGENTECH tomara la conversacion desde nuestro CRM.\n\nA partir de ahora el bot no respondera automaticamente.",
-            number
-        ));
-        await enviar(number, mensajes);
+        await derivarAHumano(number, sesion, mensajes, "pidio asesor");
         return;
     }
+
     if (SOPORTE_TITULOS[optionId]) {
-        finalizarParaAtencionHumana(sesion);
-        const modulo    = SOPORTE_TITULOS[optionId];
-        const respuesta = "Soporte: " + modulo
-            + "\n\nRegistramos tu solicitud de asistencia sobre " + modulo + "."
-            + "\n\nPor favor, describinos brevemente el problema, el mensaje de error o la accion que estabas realizando cuando se presento el inconveniente."
-            + "\n\nTu conversacion ya fue derivada al area de Soporte Tecnico. Un tecnico de AGENTECH se comunicara contigo a la brevedad.";
-        mensajes.push(whatsappModels.MessageText(respuesta, number));
-        await enviar(number, mensajes);
-        setTimeout(async function() {
-            try {
-                console.log("Asignando tecnico para " + number + " - modulo: " + modulo);
-                const resultado = await whatsappServices.asignarTecnico(number, "TECNICO");
-                if (resultado && resultado.success) {
-                    console.log("Tecnico asignado: " + resultado.asignado + " para " + number);
-                } else {
-                    console.warn("Sin tecnico disponible:", resultado && resultado.mensaje);
-                }
-            } catch (err) {
-                console.error("Error en asignacion:", err.message);
-            }
-        }, 3000);
+        const modulo = SOPORTE_TITULOS[optionId];
+        await derivarAHumano(number, sesion, mensajes, "soporte modulo: " + modulo);
         return;
     }
+
+    // ---------- Paso: esperando RUC (con anti-bobos) ----------
     if (sesion.estado === "ESPERANDO_RUC") {
         const documento = textoOriginal.trim();
+
         if (!documento) {
+            const cortar = registrarIntentoFallido(sesion, "ruc", textoOriginal);
+            if (cortar) {
+                await derivarAHumano(number, sesion, mensajes, "no respondio RUC tras varios intentos");
+                return;
+            }
             mensajes.push(whatsappModels.MessageText(
                 "Por favor escribi el RUC de tu empresa o tu CI para continuar.", number
             ));
             await enviar(number, mensajes);
             return;
         }
+
         var cliente = null;
         try {
             cliente = await whatsappServices.buscarClientePorRucOCi(documento);
         } catch (error) {
-            mensajes.push(whatsappModels.MessageText(
-                "Ahora mismo no puedo validar el RUC o CI por un problema de conexion. Por favor intenta de nuevo en unos minutos o escribi hablar con asesor.",
-                number
-            ));
-            await enviar(number, mensajes);
+            await derivarAHumano(number, sesion, mensajes, "error validando RUC/CI");
             return;
         }
+
         if (!cliente) {
+            const cortar = registrarIntentoFallido(sesion, "ruc", textoOriginal);
+            if (cortar) {
+                await derivarAHumano(number, sesion, mensajes, "RUC/CI invalido tras varios intentos");
+                return;
+            }
             sesion.ruc     = null;
             sesion.cliente = null;
             sesion.contactoPendiente = null;
@@ -296,6 +317,8 @@ async function processMessage(textUser, number, optionId, messageObj) {
             await enviar(number, mensajes);
             return;
         }
+
+        limpiarIntentos(sesion);
         sesion.ruc     = cliente.ruc || documento;
         sesion.cliente = cliente;
         sesion.contactoPendiente = {
@@ -304,7 +327,7 @@ async function processMessage(textUser, number, optionId, messageObj) {
             idPropietario: cliente.idPropietario || cliente.propietario || "AGENTECH",
             idEmpresa: cliente.idEmpresa || null
         };
-        sesion.estado  = "ESPERANDO_NOMBRE_PERSONA";
+        sesion.estado = "ESPERANDO_NOMBRE_PERSONA";
         mensajes.push(whatsappModels.MessageText(
             "Gracias. Identificamos la empresa como " + cliente.nombre + ".\n\nPara registrar correctamente este numero, por favor indicanos el nombre de la persona que esta escribiendo.",
             number
@@ -312,9 +335,17 @@ async function processMessage(textUser, number, optionId, messageObj) {
         await enviar(number, mensajes);
         return;
     }
+
+    // ---------- Paso: esperando nombre de la persona (con anti-bobos) ----------
     if (sesion.estado === "ESPERANDO_NOMBRE_PERSONA") {
         const nombrePersona = textoOriginal.trim();
+
         if (nombrePersona.length < 2) {
+            const cortar = registrarIntentoFallido(sesion, "nombre", textoOriginal);
+            if (cortar) {
+                await derivarAHumano(number, sesion, mensajes, "no respondio nombre tras varios intentos");
+                return;
+            }
             mensajes.push(whatsappModels.MessageText(
                 "Por favor escribi el nombre de la persona que esta escribiendo para completar el registro.",
                 number
@@ -322,11 +353,14 @@ async function processMessage(textUser, number, optionId, messageObj) {
             await enviar(number, mensajes);
             return;
         }
-        const pendiente = sesion.contactoPendiente || {};
-        const nombreEmpresa = pendiente.nombreEmpresa || (sesion.cliente && sesion.cliente.nombre) || "AGENTECH";
-        const ruc = pendiente.ruc || sesion.ruc;
-        const idPropietario = pendiente.idPropietario || pendiente.propietario || "AGENTECH";
-        const idEmpresa = pendiente.idEmpresa || null;
+
+        limpiarIntentos(sesion);
+        const pendiente      = sesion.contactoPendiente || {};
+        const nombreEmpresa  = pendiente.nombreEmpresa || (sesion.cliente && sesion.cliente.nombre) || "AGENTECH";
+        const ruc            = pendiente.ruc || sesion.ruc;
+        const idPropietario  = pendiente.idPropietario || pendiente.propietario || "AGENTECH";
+        const idEmpresa      = pendiente.idEmpresa || null;
+
         sesion.cliente = {
             ruc: ruc,
             nombre: nombrePersona,
@@ -337,11 +371,13 @@ async function processMessage(textUser, number, optionId, messageObj) {
         };
         sesion.estado = "CLIENTE_IDENTIFICADO";
         sesion.contactoPendiente = null;
+
         await whatsappServices.guardarContactoVerificado(number, ruc, nombreEmpresa, nombrePersona, idPropietario, idEmpresa);
         mensajes.push(whatsappModels.MessageClienteMenu(number, nombrePersona, nombreEmpresa));
         await enviar(number, mensajes);
         return;
     }
+
     if (texto.includes("hola") || texto.includes("buenas") || texto || sesion.estado === "INICIO") {
         sesion.estado = "BIENVENIDA";
         mensajes.push(whatsappModels.MessageWelcome(number));
@@ -349,4 +385,5 @@ async function processMessage(textUser, number, optionId, messageObj) {
         return;
     }
 }
+
 module.exports = { processMessage, reiniciarConversacion };
