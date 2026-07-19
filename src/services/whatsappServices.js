@@ -179,25 +179,45 @@ async function saveMessageOracle(number, message, esRespuestaBot, mediaUrl, medi
     mediaUrl       = mediaUrl       || null;
     mediaTipo      = mediaTipo      || null;
     waMessageId    = waMessageId    || null;
-    try {
-        const response = await axios.post(
-            APEX_URL,
-            {
-                telefono:       number,
-                mensaje:        message   || "",
-                intencion:      esRespuestaBot ? "RESPUESTA_BOT" : "MENSAJE_CLIENTE",
-                media_url:      mediaUrl  || "",
-                media_tipo:     mediaTipo || "",
-                wa_message_id:  waMessageId || ""
-            },
-            {
-                headers: { "Content-Type": "application/json" },
-                timeout: 5000
+    const payload = {
+        telefono:       number,
+        mensaje:        message   || "",
+        intencion:      esRespuestaBot ? "RESPUESTA_BOT" : "MENSAJE_CLIENTE",
+        media_url:      mediaUrl  || "",
+        media_tipo:     mediaTipo || "",
+        wa_message_id:  waMessageId || ""
+    };
+
+    for (var intento = 1; intento <= 3; intento++) {
+        try {
+            const response = await axios.post(
+                APEX_URL,
+                payload,
+                {
+                    headers: { "Content-Type": "application/json" },
+                    timeout: 5000
+                }
+            );
+
+            const data = response.data || {};
+            const textoError = String(data.message || "");
+            if (data.status === "ERROR" && textoError.includes("ORA-00001") && intento < 3) {
+                console.warn("Oracle devolvio ID duplicado, reintentando guardado (" + intento + "/3):", data);
+                await new Promise(function(resolve) { setTimeout(resolve, 350 * intento); });
+                continue;
             }
-        );
-        console.log((esRespuestaBot ? "Respuesta Bot" : "Mensaje Cliente") + " guardado:", response.data);
-    } catch (error) {
-        console.error("Error Oracle:", error.response && error.response.data || error.message);
+
+            console.log((esRespuestaBot ? "Respuesta Bot" : "Mensaje Cliente") + " guardado:", data);
+            return data;
+        } catch (error) {
+            if (intento < 3) {
+                console.warn("Error Oracle, reintentando guardado (" + intento + "/3):", error.response && error.response.data || error.message);
+                await new Promise(function(resolve) { setTimeout(resolve, 350 * intento); });
+                continue;
+            }
+            console.error("Error Oracle:", error.response && error.response.data || error.message);
+            return { status: "ERROR", message: error.message };
+        }
     }
 }
 
