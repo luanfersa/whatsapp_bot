@@ -8,6 +8,7 @@ const { MEDIA_DIR, getMediaBaseUrl } = require("../shared/mediaConfig");
 // URLs ORDS APEX
 const APEX_URL        = "https://g7291f4e4aa4c82-agentech.adb.sa-saopaulo-1.oraclecloudapps.com/ords/agentech/chatbot/mensaje/";
 const CLIENTE_RUC_URL = process.env.CLIENTE_RUC_URL || "https://g7291f4e4aa4c82-agentech.adb.sa-saopaulo-1.oraclecloudapps.com/ords/agentech/chatbot/cliente/";
+const CLIENTE_CI_URL  = process.env.CLIENTE_CI_URL  || "https://g7291f4e4aa4c82-agentech.adb.sa-saopaulo-1.oraclecloudapps.com/ords/agentech/chatbot/ci_clientes/";
 const DEUDA_RUC_URL   = process.env.DEUDA_RUC_URL   || "https://g7291f4e4aa4c82-agentech.adb.sa-saopaulo-1.oraclecloudapps.com/ords/agentech/chatbot/deuda";
 const ASIGNAR_URL     = "https://g7291f4e4aa4c82-agentech.adb.sa-saopaulo-1.oraclecloudapps.com/ords/agentech/chatbot/asignar/";
 const ADJUNTO_URL     = "https://g7291f4e4aa4c82-agentech.adb.sa-saopaulo-1.oraclecloudapps.com/ords/agentech/chatbot/adjunto/";
@@ -196,12 +197,12 @@ async function saveMessageOracle(number, message, esRespuestaBot, mediaUrl, medi
 }
 
 // ==========================================
-// BUSCAR CLIENTE POR RUC EN ORACLE APEX
+// BUSCAR CLIENTE POR DOCUMENTO EN ORACLE APEX
 // ==========================================
-async function buscarClientePorRuc(ruc) {
+async function buscarClientePorDocumento(documento, tipoDocumento, baseUrl) {
     try {
         const response = await axios.get(
-            CLIENTE_RUC_URL + encodeURIComponent(ruc),
+            baseUrl + encodeURIComponent(documento),
             {
                 headers: { "Accept": "application/json" },
                 timeout: 5000
@@ -221,12 +222,52 @@ async function buscarClientePorRuc(ruc) {
 
         if (!nombre) return null;
 
-        return { ruc: cliente.ruc || ruc, nombre: nombre };
+        return {
+            ruc: cliente.ruc || cliente.RUC || documento,
+            ci: cliente.ci || cliente.CI || cliente.cedula || cliente.CEDULA || null,
+            documento: documento,
+            tipoDocumento: tipoDocumento,
+            nombre: nombre,
+            idEmpresa: cliente.id_empresa || cliente.ID_EMPRESA || null,
+            idPropietario: cliente.id_propietario || cliente.ID_PROPIETARIO || cliente.propietario || cliente.PROPIETARIO || "AGENTECH"
+        };
 
     } catch (error) {
-        console.error("Error buscando cliente por RUC:", error.response && error.response.data || error.message);
+        if (error.response && error.response.status === 404) {
+            return null;
+        }
+        console.error("Error buscando cliente por " + tipoDocumento + ":", error.response && error.response.data || error.message);
         throw error;
     }
+}
+
+async function buscarClientePorRuc(ruc) {
+    return buscarClientePorDocumento(ruc, "RUC", CLIENTE_RUC_URL);
+}
+
+async function buscarClientePorCi(ci) {
+    return buscarClientePorDocumento(ci, "CI", CLIENTE_CI_URL);
+}
+
+async function buscarClientePorRucOCi(documento) {
+    var errorRuc = null;
+
+    try {
+        const clienteRuc = await buscarClientePorRuc(documento);
+        if (clienteRuc) return clienteRuc;
+    } catch (error) {
+        errorRuc = error;
+    }
+
+    try {
+        const clienteCi = await buscarClientePorCi(documento);
+        if (clienteCi) return clienteCi;
+    } catch (error) {
+        if (CLIENTE_CI_URL === CLIENTE_RUC_URL && errorRuc) throw errorRuc;
+        throw error;
+    }
+
+    return null;
 }
 
 // ==========================================
@@ -244,21 +285,33 @@ async function buscarContactoPorTelefono(telefono) {
         );
 
         const data = response.data || {};
-        const contacto = Array.isArray(data.items) ? data.items[0] : data;
+        var contacto = Array.isArray(data.items) ? data.items[0] : data;
 
         if (!contacto || contacto.encontrado === false || contacto.existe === false) {
             return null;
         }
+        if (Array.isArray(contacto.empresas) && contacto.empresas.length) {
+            contacto = contacto.empresas.find(function(empresa) {
+                return empresa.predeterminado === "S";
+            }) || contacto.empresas[0];
+        }
 
         const ruc = contacto.ruc || contacto.RUC;
-        const nombre = contacto.nombre_empresa || contacto.NOMBRE_EMPRESA || contacto.nombre || contacto.NOMBRE;
+        const nombreEmpresa = contacto.nombre_empresa || contacto.NOMBRE_EMPRESA || contacto.empresa || contacto.EMPRESA;
+        const nombrePersona = contacto.nombre_persona || contacto.NOMBRE_PERSONA || contacto.nombre || contacto.NOMBRE;
+        const idPropietario = contacto.id_propietario || contacto.ID_PROPIETARIO || contacto.propietario || contacto.PROPIETARIO || "AGENTECH";
+        const idEmpresa = contacto.id_empresa || contacto.ID_EMPRESA || null;
 
-        if (!ruc || !nombre) return null;
+        if (!ruc || !nombreEmpresa) return null;
 
         return {
             telefono: contacto.telefono || telefono,
             ruc: ruc,
-            nombre: nombre
+            nombre: nombrePersona || nombreEmpresa,
+            nombrePersona: nombrePersona || null,
+            nombreEmpresa: nombreEmpresa,
+            idPropietario: idPropietario,
+            idEmpresa: idEmpresa
         };
     } catch (error) {
         console.error("Error buscando contacto por telefono:", error.response && error.response.data || error.message);
@@ -269,14 +322,17 @@ async function buscarContactoPorTelefono(telefono) {
 // ==========================================
 // GUARDAR CONTACTO VERIFICADO
 // ==========================================
-async function guardarContactoVerificado(telefono, ruc, nombreEmpresa) {
+async function guardarContactoVerificado(telefono, ruc, nombreEmpresa, nombrePersona, idPropietario, idEmpresa) {
     try {
         const response = await axios.post(
             CONTACTO_URL,
             {
                 telefono: telefono,
                 ruc: ruc,
-                nombre_empresa: nombreEmpresa
+                nombre_empresa: nombreEmpresa,
+                nombre_persona: nombrePersona || "",
+                id_propietario: idPropietario || "AGENTECH",
+                id_empresa: idEmpresa || null
             },
             {
                 headers: { "Content-Type": "application/json" },
@@ -341,8 +397,61 @@ async function sendAndSaveMessage(number, message) {
         type: "text",
         text: { body: message }
     };
-    sendMessageWhatsApp(JSON.stringify(data));
+    await sendMessageWhatsApp(JSON.stringify(data));
     console.log("Bot respondio a " + number + ": " + message);
+}
+
+function normalizarTelefono(number) {
+    return String(number || "").replace(/[^\d]/g, "");
+}
+
+function crearParametrosTexto(valores) {
+    if (!Array.isArray(valores)) return [];
+    return valores.map(function(valor) {
+        return {
+            type: "text",
+            text: String(valor == null ? "" : valor)
+        };
+    });
+}
+
+function crearComponentesTemplate(variables, componentes) {
+    if (Array.isArray(componentes) && componentes.length) return componentes;
+
+    const parametros = crearParametrosTexto(variables);
+    if (!parametros.length) return [];
+
+    return [{
+        type: "body",
+        parameters: parametros
+    }];
+}
+
+function crearPayloadTemplate(number, templateName, languageCode, variables, componentes) {
+    const payload = {
+        messaging_product: "whatsapp",
+        to: normalizarTelefono(number),
+        type: "template",
+        template: {
+            name: templateName,
+            language: {
+                code: languageCode || "es"
+            }
+        }
+    };
+
+    const templateComponents = crearComponentesTemplate(variables, componentes);
+    if (templateComponents.length) {
+        payload.template.components = templateComponents;
+    }
+
+    return payload;
+}
+
+async function sendTemplateMessage(number, templateName, languageCode, variables, componentes) {
+    return sendMessageWhatsApp(JSON.stringify(
+        crearPayloadTemplate(number, templateName, languageCode, variables, componentes)
+    ));
 }
 
 // ==========================================
@@ -371,25 +480,33 @@ async function asignarTecnico(telefono, tipo) {
 // ENVIAR MENSAJE A WHATSAPP
 // ==========================================
 function sendMessageWhatsApp(data) {
-    const options = {
-        host:   "graph.facebook.com",
-        path:   "/v25.0/1166278486566526/messages",
-        method: "POST",
-        headers: {
-            "Content-Type":  "application/json",
-            "Authorization": "Bearer " + META_TOKEN
-        }
-    };
+    return new Promise(function(resolve) {
+        const options = {
+            host:   "graph.facebook.com",
+            path:   "/v25.0/1166278486566526/messages",
+            method: "POST",
+            headers: {
+                "Content-Type":  "application/json",
+                "Authorization": "Bearer " + META_TOKEN
+            }
+        };
 
-    const req = https.request(options, function(res) {
-        var responseData = "";
-        res.on("data", function(chunk) { responseData += chunk; });
-        res.on("end",  function()      { console.log("Respuesta Meta:", responseData); });
+        const req = https.request(options, function(res) {
+            var responseData = "";
+            res.on("data", function(chunk) { responseData += chunk; });
+            res.on("end",  function() {
+                console.log("Respuesta Meta:", responseData);
+                resolve(responseData);
+            });
+        });
+
+        req.on("error", function(error) {
+            console.error("Error enviando:", error);
+            resolve(null);
+        });
+        req.write(data);
+        req.end();
     });
-
-    req.on("error", function(error) { console.error("Error enviando:", error); });
-    req.write(data);
-    req.end();
 }
 
 module.exports = {
@@ -400,7 +517,11 @@ module.exports = {
     saveMediaMessage,
     saveMediaAsAdjunto,
     getMediaUrl,
+    sendTemplateMessage,
+    crearPayloadTemplate,
     buscarClientePorRuc,
+    buscarClientePorCi,
+    buscarClientePorRucOCi,
     buscarContactoPorTelefono,
     guardarContactoVerificado,
     consultarDeudaPorRuc,

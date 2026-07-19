@@ -48,7 +48,11 @@ function MessageWelcome(number) {
     });
 }
 
-function MessageClienteMenu(number, nombreCliente) {
+function MessageClienteMenu(number, nombreCliente, nombreEmpresa) {
+    const texto = nombreEmpresa
+        ? "Gracias, " + nombreCliente + ". Tu numero quedo asociado a " + nombreEmpresa + ".\n\nEn que podemos ayudarte?"
+        : "Hola, " + nombreCliente + ". En que podemos ayudarte?";
+
     return JSON.stringify({
         messaging_product: "whatsapp",
         to: number,
@@ -56,7 +60,7 @@ function MessageClienteMenu(number, nombreCliente) {
         interactive: {
             type: "button",
             body: {
-                text: "Hola, " + nombreCliente + ". En que podemos ayudarte?"
+                text: texto
             },
             footer: {
                 text: "AGENTECH"
@@ -66,8 +70,8 @@ function MessageClienteMenu(number, nombreCliente) {
                     {
                         type: "reply",
                         reply: {
-                            id: "ver_deuda",
-                            title: "Ver deuda"
+                            id: "hablar_administracion",
+                            title: "Administracion"
                         }
                     },
                     {
@@ -75,13 +79,6 @@ function MessageClienteMenu(number, nombreCliente) {
                         reply: {
                             id: "soporte_tecnico",
                             title: "Soporte tecnico"
-                        }
-                    },
-                    {
-                        type: "reply",
-                        reply: {
-                            id: "hablar_asesor",
-                            title: "Hablar asesor"
                         }
                     }
                 ]
